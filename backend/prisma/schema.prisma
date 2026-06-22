@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  NEGOTIATION
+  WON
+  LOST
+  CANCELLED
+}
+
+enum SpkSalesStatus {
+  DRAFT
+  SUBMITTED
+}
+
+enum SpkFinanceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum EntityType {
+  LEAD
+  SPK
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  key         String           @unique
+  feature     String
+  action      String
+  description String
+  roles       RolePermission[]
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String?
+  isSystem    Boolean          @default(false)
+  isDefault   Boolean          @default(false)
+  permissions RolePermission[]
+  users       User[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model User {
+  id        String          @id @default(uuid())
+  name      String
+  email     String          @unique
+  password  String?
+  provider  String          @default("local")
+  isActive  Boolean         @default(true)
+  roleId    String?
+  role      Role?           @relation(fields: [roleId], references: [id])
+  leads     Lead[]
+  assignedSpks Spk[]        @relation("AssignedFinance")
+  histories StatusHistory[] @relation("ChangedBy")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([roleId])
+}
+
+model Lead {
+  id             String     @id @default(uuid())
+  companyName    String
+  contactName    String
+  phone          String
+  email          String
+  source         String
+  estimatedValue Decimal    @db.Decimal(15, 2)
+  status         LeadStatus @default(NEW)
+  notes          String?
+  ownerId        String
+  owner          User       @relation(fields: [ownerId], references: [id])
+  spk            Spk?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([ownerId])
+  @@index([status])
+}
+
+model Spk {
+  id            String           @id @default(uuid())
+  spkNumber     String           @unique
+  leadId        String           @unique
+  lead          Lead             @relation(fields: [leadId], references: [id])
+  projectName   String
+  contractValue Decimal          @db.Decimal(15, 2)
+  startDate     DateTime
+  endDate       DateTime
+  salesStatus   SpkSalesStatus   @default(DRAFT)
+  financeStatus SpkFinanceStatus @default(PENDING)
+  financeNotes  String?
+  assignedFinanceId String?
+  assignedFinance   User?        @relation("AssignedFinance", fields: [assignedFinanceId], references: [id])
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([assignedFinanceId])
+}
+
+model StatusHistory {
+  id          String     @id @default(uuid())
+  entityType  EntityType
+  entityId    String
+  fromStatus  String?
+  toStatus    String
+  changedById String
+  changedBy   User       @relation("ChangedBy", fields: [changedById], references: [id])
+  notes       String?
+  createdAt   DateTime   @default(now())
+
+  @@index([entityType, entityId])
+}
+
+model SpkCounter {
+  period String @id
+  seq    Int    @default(0)
+}
